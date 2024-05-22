@@ -162,7 +162,7 @@ function CheckIPInternal($ip) {
 }
 
 function GetIPGeolocation($ip) {
-    $apiKey = "b10798395c1e4bb48ec9a87fd7f9ecd0"
+    $apiKey = "<API-KEY>"
     $url = "https://api.ipgeolocation.io/ipgeo?apiKey=$apiKey&ip=$ip&fields=geo"
 
     try {
