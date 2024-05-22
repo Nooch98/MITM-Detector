@@ -2,19 +2,19 @@ function AnalyzeDNS {
     $dnsTraffic = Get-DnsClientCache | Where-Object { $_.Type -eq "A" -or $_.Type -eq "AAAA" }
 
     if ($dnsTraffic) {
-        Write-Host "[!] Se ha detectado tráfico DNS sospechoso:" -ForegroundColor Red
+        Write-Host "[!] Suspicious DNS traffic detected:" -ForegroundColor Red
         foreach ($query in $dnsTraffic) {
             $domain = $query.Name
             $ipAddress = $query.Address
 
             if ($ipAddress -match '10\.(0|1|2|3)\.') {
-                Write-Host "[!] Consulta DNS sospechosa: $domain -> $ipAddress" -ForegroundColor Yellow
+                Write-Host "[!] Suspicious DNS query: $domain -> $ipAddress" -ForegroundColor Yellow
             } else {
-                Write-Host "[*] Consulta DNS: $domain -> $ipAddress"
+                Write-Host "[*] DNS query: $domain -> $ipAddress"
             }
         }
     } else {
-        Write-Host "[+] No se ha detectado tráfico DNS." -ForegroundColor Green
+        Write-Host "[+] No DNS traffic detected." -ForegroundColor Green
     }
 }
 
@@ -22,7 +22,7 @@ function AnalyzeHTTP {
     $httpTraffic = Get-NetTCPConnection | Where-Object { $_.LocalPort -eq 80 -or $_.LocalPort -eq 443 }
 
     if ($httpTraffic) {
-        Write-Host "[!] Se ha detectado tráfico HTTP sospechoso:" -ForegroundColor Red
+        Write-Host "[!] Suspicious HTTP traffic detected:" -ForegroundColor Red
         foreach ($connection in $httpTraffic) {
             $remoteIP = $connection.RemoteAddress
             $remotePort = $connection.RemotePort
@@ -32,13 +32,13 @@ function AnalyzeHTTP {
 
             # Ejemplo: Verificar si la IP es sospechosa
             if ($remoteIP -match '10\.(0|1|2|3)\.') {
-                Write-Host "[!] Conexión HTTP sospechosa: $remoteIP : $remotePort" -ForegroundColor Red
+                Write-Host "[!] Suspicious HTTP connection: $remoteIP : $remotePort" -ForegroundColor Red
             } else {
-                Write-Host "[*] Conexión HTTP: $remoteIP : $remotePort"
+                Write-Host "[*] HTTP connection: $remoteIP : $remotePort"
             }
         }
     } else {
-        Write-Host "[+] No se ha detectado tráfico HTTP." -ForegroundColor Green
+        Write-Host "[+] No HTTP traffic detected." -ForegroundColor Green
     }
 }
 
@@ -46,23 +46,23 @@ function AnalyzeHTTPS {
     $httpsTraffic = Get-NetTCPConnection | Where-Object { $_.RemotePort -eq 443 }
 
     if ($httpsTraffic) {
-        Write-Host "[!] Se ha detectado tráfico HTTPS:" -ForegroundColor Red
+        Write-Host "[!] HTTPS traffic detected:" -ForegroundColor Red
         foreach ($connection in $httpsTraffic) {
             $remoteIP = $connection.RemoteAddress
             $remotePort = $connection.RemotePort
 
             # Verificar si la IP es sospechosa
             if ($remoteIP -match '10\.(0|1|2|3)\.') {
-                Write-Host "[!] Conexión HTTPS sospechosa: $remoteIP : $remotePort" -ForegroundColor Yellow
+                Write-Host "[!] Suspicious HTTPS connection: $remoteIP : $remotePort" -ForegroundColor Yellow
             } else {
-                Write-Host "[*] Conexión HTTPS: $remoteIP : $remotePort"
+                Write-Host "[*] HTTPS connection: $remoteIP : $remotePort"
             }
 
             # Verificar el certificado SSL/TLS
             VerifySSL $remoteIP
         }
     } else {
-        Write-Host "[+] No se ha detectado tráfico HTTPS." -ForegroundColor Green
+        Write-Host "[+] No HTTPS traffic detected." -ForegroundColor Green
     }
 }
 
@@ -74,7 +74,7 @@ function VerifySSL ($remoteIP) {
 
         # Verificar si la IP es sospechosa
         if ($remoteIP -match '192\.168\.0\.(10|20)') {
-            Write-Host "[!] Conexión sospechosa detectada: $remoteIP" -ForegroundColor Red
+            Write-Host "[!] Suspicious connection detected: $remoteIP" -ForegroundColor Red
         }
 
         $commonPorts = @(443)  # Puerto HTTPS (443)
@@ -96,21 +96,21 @@ function VerifySSL ($remoteIP) {
                     $cert.Import($sslStream)
 
                     if ($cert -ne $null) {
-                        Write-Host "[+] Conexión SSL/TLS exitosa en $remoteIP : $port" -ForegroundColor Green
-                        Write-Host "    - Emisor: $($cert.Issuer)"
-                        Write-Host "    - Sujeto: $($cert.Subject)"
-                        Write-Host "    - Fecha de Vencimiento: $($cert.NotAfter)"
-                        Write-Host "    - Algoritmo de Firma: $($cert.SignatureAlgorithm.FriendlyName)"
-                        Write-Host "    - Tamaño de la Clave Pública: $($cert.PublicKey.Key.KeySize) bits"
-                        Write-Host "    - Hash del Certificado: $($cert.GetCertHashString())"
-                        Write-Host "    - Uso de Clave: $($cert.GetKeyUsageFlags())"
-                        Write-Host "    - Propósitos Extendidos: $($cert.Extensions)"
+                        Write-Host "[+] SSL/TLS connection successful on $remoteIP : $port" -ForegroundColor Green
+                        Write-Host "    - Transmitter: $($cert.Issuer)"
+                        Write-Host "    - Subject: $($cert.Subject)"
+                        Write-Host "    - Due date: $($cert.NotAfter)"
+                        Write-Host "    - Signature Algorithm: $($cert.SignatureAlgorithm.FriendlyName)"
+                        Write-Host "    - Public Key Size: $($cert.PublicKey.Key.KeySize) bits"
+                        Write-Host "    - Certificate Hash: $($cert.GetCertHashString())"
+                        Write-Host "    - Key Usage: $($cert.GetKeyUsageFlags())"
+                        Write-Host "    - Extended Purposes: $($cert.Extensions)"
                     } else {
-                        Write-Host "[!] No se pudo analizar el certificado SSL/TLS en $remoteIP : $port" -ForegroundColor Yellow
+                        Write-Host "[!] Could not parse SSL/TLS certificate on $remoteIP : $port" -ForegroundColor Yellow
                     }
                 }
             } catch {
-                Write-Host "[!] Error al verificar el certificado SSL/TLS en $remoteIP : $port" -ForegroundColor Red
+                Write-Host "[!] Error verifying SSL/TLS certificate on $remoteIP : $port" -ForegroundColor Red
             }
         }
     }
@@ -124,7 +124,7 @@ function DetectSuspiciousHosts {
 
         # Verificar si la IP es sospechosa
         if ($remoteIP -match '192\.168\.0\.(10|20)') {
-            Write-Host "[!] Conexión sospechosa detectada: $remoteIP" -ForegroundColor Red
+            Write-Host "[!] Suspicious connection detected: $remoteIP" -ForegroundColor Red
         }
     }
 }
@@ -138,16 +138,16 @@ function CheckMicrosoftServiceIP($ip, $jsonFilePath) {
             $isMicrosoftIP = $ipRanges.values | Where-Object { $_.properties.addressPrefixes -contains $ip }
 
             if ($isMicrosoftIP) {
-                Write-Host "[+] La IP $ip pertenece a un servicio de Microsoft." -ForegroundColor Green
+                Write-Host "[+] The IP $ip belongs to a Microsoft service." -ForegroundColor Green
             } else {
-                Write-Host "[!] La IP $ip no pertenece a un servicio de Microsoft." -ForegroundColor Red
+                Write-Host "[!] The IP $ip does not belong to a Microsoft service." -ForegroundColor Red
                 GetIPGeolocation $ip
             }
         } else {
-            Write-Host "[!] El archivo JSON no existe en la ruta especificada: $jsonFilePath" -ForegroundColor Red
+            Write-Host "[!] The JSON file does not exist at the specified path: $jsonFilePath" -ForegroundColor Red
         }
     } catch {
-        Write-Host "[!] Error al cargar el archivo JSON." -ForegroundColor Blue
+        Write-Host "[!] Error loading JSON file." -ForegroundColor Blue
     }
 }
 
@@ -155,9 +155,9 @@ function CheckIPInternal($ip) {
     $ipconfig = Get-NetIPConfiguration | Where-Object { $_.IPv4Address.IPAddress -contains $ip -or $_.IPv6Address.IPAddress -contains $ip }
 
     if ($ipconfig) {
-        Write-Host "[+] La IP $ip es interna a tu red." -ForegroundColor Green
+        Write-Host "[+] The IP $ip is internal to your network." -ForegroundColor Green
     } else {
-        Write-Host "[!] La IP $ip es externa a tu red." -ForegroundColor Red
+        Write-Host "[!] The IP $ip is external to your network." -ForegroundColor Red
     }
 }
 
@@ -168,10 +168,10 @@ function GetIPGeolocation($ip) {
     try {
         $response = Invoke-RestMethod -Uri $url -ErrorAction Stop
 
-        Write-Host "[!] La ubicación de la IP $ip es:"
+        Write-Host "[!] The location of the IP $ip is:"
         $response | Format-Table -AutoSize
     } catch {
-        Write-Host "Error al obtener la ubicación geográfica de la IP $ip $($_.Exception.Message)"
+        Write-Host "Error getting geolocation from IP $ip $($_.Exception.Message)"
     }
 }
 
@@ -179,7 +179,7 @@ function CheckMitMIPv4 {
     $arptable = Get-NetNeighbor | Where-Object { $_.State -eq 'Reachable' }
 
     if ($arptable) {
-        Write-Host "[!] Se ha encontrado una tabla ARP sospechosa:" -ForegroundColor Red
+        Write-Host "[!] A suspicious ARP table was found:" -ForegroundColor Red
         $arptable
 
         $arptable | ForEach-Object {
@@ -188,7 +188,7 @@ function CheckMitMIPv4 {
             CheckMicrosoftServiceIP $ip $jsonFilePath
         }
     } else {
-        Write-Host "[*] No se ha encontrado ninguna actividad sospechosa en la tabla ARP." -ForegroundColor Green
+        Write-Host "[*] No suspicious activity found in the ARP table." -ForegroundColor Green
     }
 }
 
@@ -196,7 +196,7 @@ function CheckMitMIPv6 {
     $ndtable = Get-NetNeighbor -AddressFamily IPv6 | Where-Object { $_.State -eq 'Reachable' }
 
     if ($ndtable) {
-        Write-Host "[!] Se ha encontrado una tabla ND sospechosa:" -ForegroundColor Red
+        Write-Host "[!] A suspicious ND table was found:" -ForegroundColor Red
         $ndtable
 
         $ndtable | ForEach-Object {
@@ -205,29 +205,29 @@ function CheckMitMIPv6 {
             CheckMicrosoftServiceIP $ip $jsonFilePath
         }
     } else {
-        Write-Host "[*] No se ha encontrado ninguna actividad sospechosa en la tabla ND."
+        Write-Host "[*] No suspicious activity was found in the ND table."
     }
 }
 
-$jsonFilePath = "ServiceTags_Public_20240520.json"
+$jsonFilePath = "$env:USERPROFILE\Documents\PowerShell\Scripts\ServiceTags_Public_20240520.json"
 
-Write-Host "[#] Verificando actividad Man-in-the-Middle en IPv4..." -ForegroundColor Blue
+Write-Host "[#] Verifying Man-in-the-Middle activity in IPv4..." -ForegroundColor Blue
 CheckMitMIPv4
 
-Write-Host "[#] Verificando actividad Man-in-the-Middle en IPv6..." -ForegroundColor Blue
+Write-Host "[#]Verifying Man-in-the-Middle activity in IPv6..." -ForegroundColor Blue
 CheckMitMIPv6
 
-Write-Host "[#] Detectando hosts sospechosos..." -ForegroundColor Blue
+Write-Host "[#] Detecting suspicious hosts..." -ForegroundColor Blue
 DetectSuspiciousHosts
 
-Write-Host "[#] Verificando certificados SSL/TLS..." -ForegroundColor Blue
+Write-Host "[#] Verifying SSL/TLS certificates..." -ForegroundColor Blue
 VerifySSL
 
-Write-Host "[#] Verificando DNS..." -ForegroundColor Blue
+Write-Host "[#] Verifying DNS..." -ForegroundColor Blue
 AnalyzeDNS
 
-Write-Host "[#] Verificando tráfico HTTP..." -ForegroundColor Blue
+Write-Host "[#] Verifying HTTP traffic..." -ForegroundColor Blue
 AnalyzeHTTP
 
-Write-Host "[#] Verificando trafico HTTPS..." -ForegroundColor Blue
+Write-Host "[#] Verifying HTTPS traffic..." -ForegroundColor Blue
 AnalyzeHTTPS
