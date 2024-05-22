@@ -209,7 +209,7 @@ function CheckMitMIPv6 {
     }
 }
 
-$jsonFilePath = "$env:USERPROFILE\Documents\PowerShell\Scripts\ServiceTags_Public_20240520.json"
+$jsonFilePath = "ServiceTags_Public_20240520.json"
 
 Write-Host "[#] Verificando actividad Man-in-the-Middle en IPv4..." -ForegroundColor Blue
 CheckMitMIPv4
