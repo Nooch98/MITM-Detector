@@ -59,6 +59,7 @@ function AnalyzeHTTPS {
             }
 
             # Verificar el certificado SSL/TLS
+            GetThreatIntel $remoteIP
             VerifySSL $remoteIP
         }
     } else {
@@ -122,7 +123,6 @@ function DetectSuspiciousHosts {
     foreach ($connection in $tcpConnections) {
         $remoteIP = $connection.RemoteAddress
 
-        # Verificar si la IP es sospechosa
         if ($remoteIP -match '192\.168\.0\.(10|20)') {
             Write-Host "[!] Suspicious connection detected: $remoteIP" -ForegroundColor Red
         }
@@ -206,6 +206,29 @@ function CheckMitMIPv6 {
         }
     } else {
         Write-Host "[*] No suspicious activity was found in the ND table."
+    }
+}
+
+function GetThreatIntel($ip) {
+    $apiKey = "<API-KEY>"
+    $url = "https://www.virustotal.com/api/v3/ip_addresses/$ip"
+
+    try {
+        $headers = @{
+            "x-apikey" = $apiKey
+        }
+        $response = Invoke-RestMethod -Uri $url -Headers $headers -Method Get
+
+        if ($response.error -eq $null) {
+            $reputation = $response.data.attributes.reputation
+            $owner = $response.data.attributes.as_owner
+            Write-Host "Reputación de la dirección IP ${ip}: $reputation" -ForegroundColor Green
+            Write-Host "Propietario de la IP: $owner" -ForegroundColor Green
+        } else {
+            Write-Host "La dirección IP $ip no se encontró en la base de datos de VirusTotal." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "Error al consultar la inteligencia de amenazas para la dirección IP ${ip}: $_" -ForegroundColor Red
     }
 }
 
