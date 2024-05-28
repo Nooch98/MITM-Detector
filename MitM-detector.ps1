@@ -222,13 +222,13 @@ function GetThreatIntel($ip) {
         if ($response.error -eq $null) {
             $reputation = $response.data.attributes.reputation
             $owner = $response.data.attributes.as_owner
-            Write-Host "Reputación de la dirección IP ${ip}: $reputation" -ForegroundColor Green
-            Write-Host "Propietario de la IP: $owner" -ForegroundColor Green
+            Write-Host "IP address reputation ${ip}: $reputation" -ForegroundColor Green
+            Write-Host "IP Owner: $owner" -ForegroundColor Green
         } else {
-            Write-Host "La dirección IP $ip no se encontró en la base de datos de VirusTotal." -ForegroundColor Yellow
+            Write-Host "IP address $ip was not found in the VirusTotal database." -ForegroundColor Yellow
         }
     } catch {
-        Write-Host "Error al consultar la inteligencia de amenazas para la dirección IP ${ip}: $_" -ForegroundColor Red
+        Write-Host "Error querying threat intelligence for IP address ${ip}: $_" -ForegroundColor Red
     }
 }
 
