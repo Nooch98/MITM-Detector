@@ -67,52 +67,25 @@ function AnalyzeHTTPS {
     }
 }
 
-function VerifySSL ($remoteIP) {
+function VerifySSL {
     $tcpConnections = Get-NetTCPConnection -State Established
 
     foreach ($connection in $tcpConnections) {
         $remoteIP = $connection.RemoteAddress
 
-        # Verificar si la IP es sospechosa
-        if ($remoteIP -match '192\.168\.0\.(10|20)') {
-            Write-Host "[!] Suspicious connection detected: $remoteIP" -ForegroundColor Red
+        # Verificar si la IP es localhost (127.0.0.1) y omitirla si es así
+        if ($remoteIP -eq '127.0.0.1') {
+            Write-Host "Skipping localhost (127.0.0.1)" -ForegroundColor Magenta
+            continue
         }
 
         $commonPorts = @(443)  # Puerto HTTPS (443)
-        foreach ($port in $commonPorts) {
-            try {
-                if (![string]::IsNullOrEmpty($remoteIP)) {
-                    $sslStream = (New-Object System.Net.Sockets.TcpClient).GetStream()
-                    $sslStream.Connect($remoteIP, $port)
-                    $sslStream.ReadTimeout = 500
 
-                    $sslStream.Write([byte[]] @(0x16, 0x03, 0x01, 0x00, 0xfe))
-                    $response = New-Object byte[] 256
-                    $sslStream.Read($response, 0, 256)
-
-                    $sslStream.Dispose()
-
-                    # Analizar el certificado SSL/TLS
-                    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2
-                    $cert.Import($sslStream)
-
-                    if ($cert -ne $null) {
-                        Write-Host "[+] SSL/TLS connection successful on $remoteIP : $port" -ForegroundColor Green
-                        Write-Host "    - Transmitter: $($cert.Issuer)"
-                        Write-Host "    - Subject: $($cert.Subject)"
-                        Write-Host "    - Due date: $($cert.NotAfter)"
-                        Write-Host "    - Signature Algorithm: $($cert.SignatureAlgorithm.FriendlyName)"
-                        Write-Host "    - Public Key Size: $($cert.PublicKey.Key.KeySize) bits"
-                        Write-Host "    - Certificate Hash: $($cert.GetCertHashString())"
-                        Write-Host "    - Key Usage: $($cert.GetKeyUsageFlags())"
-                        Write-Host "    - Extended Purposes: $($cert.Extensions)"
-                    } else {
-                        Write-Host "[!] Could not parse SSL/TLS certificate on $remoteIP : $port" -ForegroundColor Yellow
-                    }
-                }
-            } catch {
-                Write-Host "[!] Error verifying SSL/TLS certificate on $remoteIP : $port" -ForegroundColor Red
-            }
+        try {
+            $check = (Invoke-WebRequest "https://ssl-checker.io/api/v1/check/$remoteIP").Content | ConvertFrom-JSON
+            Write-Host "SSL Status for {$remoteIP}:" $check -ForegroundColor Yellow
+        } catch {
+            Write-Host "Error checking SSL status for $remoteIP" -ForegroundColor Red
         }
     }
 }
@@ -176,14 +149,22 @@ function GetIPGeolocation($ip) {
 }
 
 function CheckMitMIPv4 {
+    $gatewayIP = (Get-NetRoute -DestinationPrefix "0.0.0.0/0").NextHop
+
     $arptable = Get-NetNeighbor | Where-Object { $_.State -eq 'Reachable' }
 
     if ($arptable) {
         Write-Host "[!] A suspicious ARP table was found:" -ForegroundColor Red
         $arptable
 
-        $arptable | ForEach-Object {
-            $ip = $_.IPAddress
+        foreach ($entry in $arptable) {
+            $ip = $entry.IPAddress
+
+            if ($ip -eq $gatewayIP) {
+                Write-Host "Skipping gateway IP: $ip" -ForegroundColor Magenta
+                continue
+            }
+
             CheckIPInternal $ip
             CheckMicrosoftServiceIP $ip $jsonFilePath
         }
@@ -213,7 +194,7 @@ function GetThreatIntel($ip) {
     $apiKey = "<API-KEY>"
     $url = "https://www.virustotal.com/api/v3/ip_addresses/$ip"
 
-    try {
+try {
         $headers = @{
             "x-apikey" = $apiKey
         }
@@ -228,7 +209,7 @@ function GetThreatIntel($ip) {
             Write-Host "IP address $ip was not found in the VirusTotal database." -ForegroundColor Yellow
         }
     } catch {
-        Write-Host "Error querying threat intelligence for IP address ${ip}: $_" -ForegroundColor Red
+        Write-Host "VirusTotal API error" -ForegroundColor Red
     }
 }
 
