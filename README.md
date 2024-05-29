@@ -10,3 +10,7 @@ You need a API-KEY of [ipgeolocation](https://ipgeolocation.io) and put here
 You need a API-KEY of [virustotal](https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://www.virustotal.com/gui/my-apikey&ved=2ahUKEwjs45yPlbGGAxVDTqQEHScvDncQFnoECAsQAQ&usg=AOvVaw3AdBCNUuLohYacWtCAzvBO) and put there
 
 ![Captura de pantalla 2024-05-28 222112](https://github.com/Nooch98/MITM-Detector/assets/73700510/b7fb1357-9587-41f8-abe9-c42f72d139cd)
+
+
+# MITM-HomeDetector
+MITM-HomeDetector is a version with some simplified functions for home use
