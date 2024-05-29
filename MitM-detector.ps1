@@ -1,3 +1,48 @@
+<#
+.SYNOPSIS
+    This script performs traffic analysis on a network, scans ports, and detects potential suspicious activities.
+
+.DESCRIPTION
+    The script consists of several functions that perform different analysis and threat detection tasks on a network.
+
+.NOTES
+    Author: Nooch98
+    Creation Date: 24/05/2024
+    Last Modified: 29/05/2024
+
+#>
+
+function PortScan {
+    $ipublic = (Invoke-WebRequest http://ifconfig.me/ip).Content
+    $hosts = @("localhost", "127.0.0.1", $ipublic)
+    $portServices = @{
+        80 = "HTTP"
+        443 = "HTTPS"
+        25 = "SMTP"
+        587 = "SMTP"
+        22 = "SSH"
+        445 = "SMB"
+        139 = "SMB"
+        135 = "RPC"
+        3389 = "WinRM"
+        5985 = "WinRM"
+        1433 = "SQL Server"
+    }
+
+    foreach ($hostname in $hosts) {
+        foreach ($port in $portServices.Keys) {
+            $result = Test-NetConnection -ComputerName $hostname -Port $port
+            if ($result.TcpTestSucceeded) {
+                $serviceName = $portServices[$port]
+                Write-Host "[*] Puerto $port ($serviceName) en $hostname está abierto." -ForegroundColor Red
+            } else {
+                $serviceName = $portServices[$port]
+                Write-Host "[!] Puerto $port ($serviceName) en $hostname está cerrado." -ForegroundColor Green
+            }
+        }
+    }
+}
+
 function AnalyzeDNS {
     $dnsTraffic = Get-DnsClientCache
 
@@ -18,52 +63,29 @@ function AnalyzeDNS {
     }
 }
 
-function AnalyzeHTTP {
+function AnalyzeHTTPAndHTTPS {
     $httpTraffic = Get-NetTCPConnection | Where-Object { $_.LocalPort -eq 80 -or $_.LocalPort -eq 443 }
 
     if ($httpTraffic) {
-        Write-Host "[!] Suspicious HTTP traffic detected:" -ForegroundColor Red
+        Write-Host "[!] Suspicious HTTP/HTTPS traffic detected:" -ForegroundColor Red
         foreach ($connection in $httpTraffic) {
-            $remoteIP = $connection.RemoteAddress
-            $remotePort = $connection.RemotePort
-
-            # Realiza comprobaciones y análisis adicionales según tus necesidades
-            # Puedes utilizar servicios de reputación de IPs, analizar los encabezados HTTP, etc.
-
-            # Ejemplo: Verificar si la IP es sospechosa
-            if ($remoteIP -match '10\.(0|1|2|3)\.') {
-                Write-Host "[!] Suspicious HTTP connection: $remoteIP : $remotePort" -ForegroundColor Red
-            } else {
-                Write-Host "[*] HTTP connection: $remoteIP : $remotePort"
-            }
-        }
-    } else {
-        Write-Host "[+] No HTTP traffic detected." -ForegroundColor Green
-    }
-}
-
-function AnalyzeHTTPS {
-    $httpsTraffic = Get-NetTCPConnection | Where-Object { $_.RemotePort -eq 443 }
-
-    if ($httpsTraffic) {
-        Write-Host "[!] HTTPS traffic detected:" -ForegroundColor Red
-        foreach ($connection in $httpsTraffic) {
             $remoteIP = $connection.RemoteAddress
             $remotePort = $connection.RemotePort
 
             # Verificar si la IP es sospechosa
             if ($remoteIP -match '10\.(0|1|2|3)\.') {
-                Write-Host "[!] Suspicious HTTPS connection: $remoteIP : $remotePort" -ForegroundColor Yellow
+                Write-Host "[!] Suspicious HTTP/HTTPS connection: $remoteIP : $remotePort" -ForegroundColor Red
+            } elseif ($remotePort -eq 443) {
+                Write-Host "[*] HTTPS connection: $remoteIP : $remotePort" -ForegroundColor Yellow
+                # Verificar el certificado SSL/TLS
+                GetThreatIntel $remoteIP
+                VerifySSL $remoteIP
             } else {
-                Write-Host "[*] HTTPS connection: $remoteIP : $remotePort"
+                Write-Host "[*] HTTP connection: $remoteIP : $remotePort" -ForegroundColor Magenta
             }
-
-            # Verificar el certificado SSL/TLS
-            GetThreatIntel $remoteIP
-            VerifySSL $remoteIP
         }
     } else {
-        Write-Host "[+] No HTTPS traffic detected." -ForegroundColor Green
+        Write-Host "[+] No HTTP/HTTPS traffic detected." -ForegroundColor Green
     }
 }
 
@@ -141,10 +163,10 @@ function GetIPGeolocation($ip) {
     try {
         $response = Invoke-RestMethod -Uri $url -ErrorAction Stop
 
-        Write-Host "[!] The location of the IP $ip is:"
+        Write-Host "[!] The location of the IP $ip is:" -ForegroundColor Yellow
         $response | Format-Table -AutoSize
     } catch {
-        Write-Host "Error getting geolocation from IP $ip $($_.Exception.Message)"
+        Write-Host "Error getting geolocation from IP $ip $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
@@ -186,7 +208,7 @@ function CheckMitMIPv6 {
             CheckMicrosoftServiceIP $ip $jsonFilePath
         }
     } else {
-        Write-Host "[*] No suspicious activity was found in the ND table."
+        Write-Host "[*] No suspicious activity was found in the ND table." -ForegroundColor Green
     }
 }
 
@@ -215,6 +237,9 @@ try {
 
 $jsonFilePath = "ServiceTags_Public_20240520.json"
 
+Write-host "[#] Scanning Ports..." -ForegroundColor Blue
+PortScan
+
 Write-Host "[#] Verifying Man-in-the-Middle activity in IPv4..." -ForegroundColor Blue
 CheckMitMIPv4
 
@@ -230,8 +255,5 @@ VerifySSL
 Write-Host "[#] Verifying DNS..." -ForegroundColor Blue
 AnalyzeDNS
 
-Write-Host "[#] Verifying HTTP traffic..." -ForegroundColor Blue
-AnalyzeHTTP
-
-Write-Host "[#] Verifying HTTPS traffic..." -ForegroundColor Blue
-AnalyzeHTTPS
+Write-Host "[#] Verifying HTTP/HTTPS traffic..." -ForegroundColor Blue
+AnalyzeHTTPAndHTTPS
