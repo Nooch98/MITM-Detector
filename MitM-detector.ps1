@@ -10,7 +10,7 @@ function AnalyzeDNS {
             if ($ipAddress -match '10\.(0|1|2|3)\.') {
                 Write-Host "[!] Suspicious DNS query: $domain -> $ipAddress" -ForegroundColor Yellow
             } else {
-                Write-Host "[*] DNS query: $domain -> $ipAddress"
+                Write-Host "[*] DNS query: $domain -> $ipAddress" -ForegroundColor Magenta
             }
         }
     } else {
