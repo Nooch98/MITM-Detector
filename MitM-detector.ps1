@@ -1,11 +1,11 @@
 function AnalyzeDNS {
-    $dnsTraffic = Get-DnsClientCache | Where-Object { $_.Type -eq "A" -or $_.Type -eq "AAAA" }
+    $dnsTraffic = Get-DnsClientCache
 
     if ($dnsTraffic) {
         Write-Host "[!] Suspicious DNS traffic detected:" -ForegroundColor Red
         foreach ($query in $dnsTraffic) {
             $domain = $query.Name
-            $ipAddress = $query.Address
+            $ipAddress = $query.Data
 
             if ($ipAddress -match '10\.(0|1|2|3)\.') {
                 Write-Host "[!] Suspicious DNS query: $domain -> $ipAddress" -ForegroundColor Yellow
