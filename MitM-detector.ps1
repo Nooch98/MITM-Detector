@@ -309,8 +309,7 @@ function Check-InternalIPs {
         Write-Host $ip -ForegroundColor Green
     }
 
-    # Ejemplo de verificación de IPs
-    $ipToCheck = "192.168.1.100"  # Cambiar esta IP por la que deseas verificar
+    $ipToCheck = $ip.IPAddress
     if ($internalIPs.IPAddress -contains $ipToCheck -or $adIPs -contains $ipToCheck) {
         Write-Host "[+] The IP $ipToCheck is internal." -ForegroundColor Green
     } else {
