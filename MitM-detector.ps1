@@ -1,16 +1,41 @@
 <#
 .SYNOPSIS
-    This script performs traffic analysis on a network, scans ports, and detects potential suspicious activities.
-
+   This script performs network traffic analysis, scans ports, and detects potentially suspicious activities.
+    
 .DESCRIPTION
-    The script consists of several functions that perform different analysis and threat detection tasks on a network.
+    The script runs different scans and threat detection tasks on a network, such as port scanning,
+    verification of HTTP/HTTPS connections, detection of Man-in-the-Middle (MitM) attacks on IPv4 and IPv6,
+    consultations to threat intelligence services, DNS traffic analysis, and validation of SSL/TLS certificates.
 
 .NOTES
     Author: Nooch98
-    Creation Date: 24/05/2024
-    Last Modified: 29/05/2024
+    Creation Date: 05/24/2024
+    Last Modification: 10/24/2024
+    Version: 1.1
 
+    - Requires a VirusTotal API key and another IP geolocation service.
+    - Download a JSON file with IP ranges from Microsoft services.
 #>
+
+$log_file = "network_analysis_log.log"
+$jsonFilePath = "ServiceTags_Public_20240520.json"
+
+function CheckMicrosoftIPfile {
+    $url = "https://raw.githubusercontent.com/Nooch98/MITM-Detector/refs/heads/main/ServiceTags_Public_20240520.json"
+    
+    if (Test-Path -Path $jsonFilePath) {
+        Write-Host "[*] $jsonFilePath already exists." -ForegroundColor Green
+    } else {
+        Write-Host "[!] $jsonFilePath does not exist. Downloading from $url" -ForegroundColor Yellow
+
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $jsonFilePath
+            Write-Host "[*] File Downloaded successfully to '$jsonFilePath'." -ForegroundColor Green
+        } catch {
+            Write-Host "[!] Error Downloading the file from $url -> $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
 
 function PortScan {
     $ipublic = (Invoke-WebRequest http://ifconfig.me/ip).Content
@@ -34,10 +59,10 @@ function PortScan {
             $result = Test-NetConnection -ComputerName $hostname -Port $port
             if ($result.TcpTestSucceeded) {
                 $serviceName = $portServices[$port]
-                Write-Host "[*] Puerto $port ($serviceName) en $hostname está abierto." -ForegroundColor Red
+                Write-Host "[*] Port $port ($serviceName) in $hostname is Open." -ForegroundColor Red
             } else {
                 $serviceName = $portServices[$port]
-                Write-Host "[!] Puerto $port ($serviceName) en $hostname está cerrado." -ForegroundColor Green
+                Write-Host "[!] Port $port ($serviceName) in $hostname is Closed." -ForegroundColor Green
             }
         }
     }
@@ -61,6 +86,8 @@ function AnalyzeDNS {
     } else {
         Write-Host "[+] No DNS traffic detected." -ForegroundColor Green
     }
+    Write-Host "[i] Writing results in a log file..." -ForegroundColor Cyan
+    Add-Content -Path $log_file -Value "Suspect activiti detected over DNS -> $domain -> $ipAddress on $(Get-Date)"
 }
 
 function AnalyzeHTTPAndHTTPS {
@@ -79,35 +106,45 @@ function AnalyzeHTTPAndHTTPS {
                 Write-Host "[*] HTTPS connection: $remoteIP : $remotePort" -ForegroundColor Yellow
                 # Verificar el certificado SSL/TLS
                 GetThreatIntel $remoteIP
-                VerifySSL $remoteIP
+                GetIPOrganization $remoteIP
             } else {
                 Write-Host "[*] HTTP connection: $remoteIP : $remotePort" -ForegroundColor Magenta
             }
         }
     } else {
-        Write-Host "[+] No HTTP/HTTPS traffic detected." -ForegroundColor Green
+        Write-Host "[i] No HTTP/HTTPS traffic detected." -ForegroundColor Green
     }
+
+    Write-Host "[i] Writing results in a log file..." -ForegroundColor Cyan
+    Add-Content -Path $log_file -Value "Suspect activiti detected over HTTP/HTTPS -> $remoteIP -> $remotePort on $(Get-Date)"
 }
 
-function VerifySSL {
+function GetIPOrganization {
     $tcpConnections = Get-NetTCPConnection -State Established
 
     foreach ($connection in $tcpConnections) {
         $remoteIP = $connection.RemoteAddress
 
-        # Verificar si la IP es localhost (127.0.0.1) y omitirla si es así
+        # Check if the IP is localhost (127.0.0.1) and skip if it is
         if ($remoteIP -eq '127.0.0.1') {
             Write-Host "Skipping localhost (127.0.0.1)" -ForegroundColor Magenta
             continue
         }
 
-        $commonPorts = @(443)  # Puerto HTTPS (443)
-
         try {
-            $check = (Invoke-WebRequest "https://ssl-checker.io/api/v1/check/$remoteIP").Content | ConvertFrom-JSON
-            Write-Host "SSL Status for {$remoteIP}:" $check -ForegroundColor Yellow
+            # Obtain WHOIS information
+            $response = (Invoke-WebRequest "https://who.is/whois-ip/ip-address/$remoteIP" -ErrorAction Stop).Content
+            $orgRegex = "Organization:\s+(.*)"
+            $orgMatch = [regex]::match($response, $orgRegex)
+
+            if ($orgMatch.Success) {
+                $organization = $orgMatch.Groups[1].Value.Trim()  # Get the organization name and trim spaces
+                Write-Host "[i] IP $remoteIP belongs to the organization -> $organization" -ForegroundColor Cyan
+            } else {
+                Write-Host "[x] Could not find the organization for IP -> $remoteIP" -ForegroundColor Red
+            }
         } catch {
-            Write-Host "Error checking SSL status for $remoteIP" -ForegroundColor Red
+            Write-Host "Error retrieving the organization for IP $remoteIP -> $($_.Exception.Message)" -ForegroundColor Red
         }
     }
 }
@@ -144,6 +181,9 @@ function CheckMicrosoftServiceIP($ip, $jsonFilePath) {
     } catch {
         Write-Host "[!] Error loading JSON file." -ForegroundColor Blue
     }
+
+    Write-Host "[i] Writing results in a log file..." -ForegroundColor Cyan
+    Add-Content -Path $log_file -Value "Suspect activiti detected over IP -> $ip el $(Get-Date)"
 }
 
 function CheckIPInternal($ip) {
@@ -154,6 +194,8 @@ function CheckIPInternal($ip) {
     } else {
         Write-Host "[!] The IP $ip is external to your network." -ForegroundColor Red
     }
+    Write-Host "[i] Writing results in a log file..." -ForegroundColor Cyan
+    Add-Content -Path $log_file -Value "Suspect activiti detected over IP -> $ip el $(Get-Date)"
 }
 
 function GetIPGeolocation($ip) {
@@ -235,7 +277,56 @@ try {
     }
 }
 
-$jsonFilePath = "ServiceTags_Public_20240520.json"
+function Get-InternalIPs {
+    $internalIPs = Get-NetIPAddress | Where-Object { $_.IPAddress -match '^(10|192\.168|172\.16|172\.31)' }
+    return $internalIPs
+}
+
+function Get-ADComputersIPs {
+    Import-Module ActiveDirectory
+    $computers = Get-ADComputer -Filter * -Property Name, IPv4Address
+
+    $computerIPs = @()
+    foreach ($computer in $computers) {
+        if ($computer.IPv4Address) {
+            $computerIPs += $computer.IPv4Address
+        }
+    }
+    return $computerIPs
+}
+
+function Check-InternalIPs {
+    $internalIPs = Get-InternalIPs
+    $adIPs = Get-ADComputersIPs
+
+    Write-Host "[*] Internal IPs from the network interfaces:" -ForegroundColor Cyan
+    foreach ($ip in $internalIPs) {
+        Write-Host $ip.IPAddress -ForegroundColor Green
+    }
+
+    Write-Host "[*] IPs from Active Directory computers:" -ForegroundColor Cyan
+    foreach ($ip in $adIPs) {
+        Write-Host $ip -ForegroundColor Green
+    }
+
+    # Ejemplo de verificación de IPs
+    $ipToCheck = "192.168.1.100"  # Cambiar esta IP por la que deseas verificar
+    if ($internalIPs.IPAddress -contains $ipToCheck -or $adIPs -contains $ipToCheck) {
+        Write-Host "[+] The IP $ipToCheck is internal." -ForegroundColor Green
+    } else {
+        Write-Host "[!] The IP $ipToCheck is external." -ForegroundColor Red
+    }
+}
+
+Write-Host "[#] Check ServiceTags file..." -ForegroundColor Blue
+CheckMicrosoftIPfile
+
+$quest = Read-Host "[?] You are on Active directory or business enviroment(y/n)(Default n)"
+if ($quest -eq "Y") {
+    Check-InternalIPs
+} else {
+    Write-Host "[i] Omited internal IP search" -ForegroundColor Cyan
+}
 
 Write-host "[#] Scanning Ports..." -ForegroundColor Blue
 PortScan
@@ -250,7 +341,7 @@ Write-Host "[#] Detecting suspicious hosts..." -ForegroundColor Blue
 DetectSuspiciousHosts
 
 Write-Host "[#] Verifying SSL/TLS certificates..." -ForegroundColor Blue
-VerifySSL
+GetIPOrganization
 
 Write-Host "[#] Verifying DNS..." -ForegroundColor Blue
 AnalyzeDNS
