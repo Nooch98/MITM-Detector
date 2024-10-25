@@ -10,7 +10,7 @@
 .NOTES
     Author: Nooch98
     Creation Date: 05/24/2024
-    Last Modification: 10/24/2024
+    Last Modification: 10/25/2024
     Version: 1.1
 
     - Requires a VirusTotal API key and another IP geolocation service.
@@ -295,6 +295,23 @@ function Get-ADComputersIPs {
     return $computerIPs
 }
 
+function DetectActiveDirectory {
+    try {
+        $computerSystem = Get-WmiObject Win32_ComputerSystem
+        $domain = $computerSystem.Domain
+        
+        # Comprobar si el equipo está en un dominio
+        if ($domain -and $domain -ne $computerSystem.Name -and $domain -ne "WORKGROUP") {
+            Write-Host "[*] Active Directory Domain Detected: $domain" -ForegroundColor Green
+            Check-InternalIPs
+        } else {
+            Write-Host "[+] No Active Directory domain detected. Current Domain: $domain" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "[!] Error detecting Active Directory: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
 function Check-InternalIPs {
     $internalIPs = Get-InternalIPs
     $adIPs = Get-ADComputersIPs
@@ -317,15 +334,97 @@ function Check-InternalIPs {
     }
 }
 
+function runyarascan {
+    $rulespath = "default_rules.yar"
+    $logFilePath  = "yara_scan_result.log"
+    $yaraurl = "https://raw.githubusercontent.com/Nooch98/MITM-Detector/refs/heads/main/default_rules.yar"
+
+    if (Test-Path -Path $rulespath) {
+        Write-Host "$rulespath already exists." -ForegroundColor Green
+    } else {
+        Write-Host "[!] $rulespath not exist. Downloading..." -ForegroundColor Yellow
+
+        try {
+            Invoke-WebRequest -Uri $yaraurl -OutFile $rulespath
+            Write-Host "[*] File Downloaded successfully to '$rulespath'." -ForegroundColor Green
+        } catch {
+            Write-Host "[!] Error Downloading the file from $yaraurl -> $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+
+    if (-not (Get-Command yara -ErrorAction SilentlyContinue)) {
+        Write-Host "[!] Yara is not installed. Installing Yara.." -ForegroundColor Yellow
+        Start-Process -NoNewWindow -Wait -FilePath "winget" -ArgumentList "install --id VirusTotal.YARA"
+        if (-not (Get-Command yara -ErrorAction SilentlyContinue)) {
+            Write-Host "[x] Error: Can't install Yara. Scaning canceled." -ForegroundColor Red
+            return
+        }
+    }
+
+    Write-Host "[*] Yara was installed correctly." -ForegroundColor Green
+
+    $criticalDirectories = @(
+        "C:\Windows\System32",                        # Archivos críticos del sistema
+        "C:\Program Files",                           # Archivos de programas
+        "C:\Program Files (x86)",                     # Archivos de programas para sistemas de 32 bits
+        "C:\Users\*\AppData\Roaming",                 # Configuración y archivos temporales de usuario
+        "C:\Users\*\Downloads",                       # Archivos descargados (posibles fuentes de malware)
+        "C:\Users\*\Desktop",                         # Escritorio del usuario
+        "C:\Users\*\Documents",                       # Documentos del usuario
+        "C:\Users\*\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup"  # Inicio automático
+    )
+
+    if (Test-Path $logFilePath) {
+        Remove-Item -Path $logFilePath -Force
+    }
+    New-Item -Path $logFilePath -ItemType File | Out-Null
+    
+    Add-Content -Path $logFilePath -Value "YARA Scan Results - $(Get-Date)"
+    Add-Content -Path $logFilePath -Value "----------------------------------------"
+
+    $Scan_File = {
+        param ($file, $rulespath, $logFilePath)
+        try {
+            $result = & yara -r $rulespath $file.FullName
+
+            if ($result) {
+                Add-Content -Path $logFilePath -Value "Match detected in: $($file.FullName)"
+                Add-Content -Path $logFilePath -Value $result
+                Add-Content -Path $logFilePath -Value "----------------------------------------"
+            }
+        } catch {
+            Add-Content -Path $logFilePath -Value "[!] Error accessing file: $($file.FullName)"
+            Add-Content -Path $logFilePath -Value $_.Exception.Message
+        }
+    }
+     Write-Host -NoNewline ("`e]9;4;3;50`a")
+    Write-Host "[i] Scanning. This take a while..." -ForegroundColor Blue
+    foreach ($directory in $criticalDirectories) {
+        # Obtener todos los archivos en el directorio y sus subdirectorios
+        $files = Get-ChildItem -Path $directory -Recurse -File -ErrorAction SilentlyContinue
+
+        # Ejecutar escaneo en paralelo
+        $jobs = @()
+        foreach ($file in $files) {
+            $jobs += Start-Job -ScriptBlock $Scan_File -ArgumentList $file, $rulespath, $logFilePath
+        }
+
+        # Esperar a que los trabajos finalicen y manejarlos
+        $jobs | ForEach-Object {
+            Receive-Job -Job $_ -ErrorAction SilentlyContinue
+            Remove-Job -Job $_
+        }
+    }
+
+    Write-Host "Full scan. Results saved in$logFilePath" -ForegroundColor Green
+    Write-Host -NoNewline ("`e]9;4;0;50`a")
+}
+
 Write-Host "[#] Check ServiceTags file..." -ForegroundColor Blue
 CheckMicrosoftIPfile
 
-$quest = Read-Host "[?] You are on Active directory or business enviroment(y/n)(Default n)"
-if ($quest -eq "Y") {
-    Check-InternalIPs
-} else {
-    Write-Host "[i] Omited internal IP search" -ForegroundColor Cyan
-}
+Write-Host "[#] Detecting if you are in an active directory environment" -ForegroundColor Blue
+DetectActiveDirectory
 
 Write-host "[#] Scanning Ports..." -ForegroundColor Blue
 PortScan
@@ -339,7 +438,7 @@ CheckMitMIPv6
 Write-Host "[#] Detecting suspicious hosts..." -ForegroundColor Blue
 DetectSuspiciousHosts
 
-Write-Host "[#] Verifying SSL/TLS certificates..." -ForegroundColor Blue
+Write-Host "[#] Verifying the organizations to which the IPs belong..." -ForegroundColor Blue
 GetIPOrganization
 
 Write-Host "[#] Verifying DNS..." -ForegroundColor Blue
@@ -347,3 +446,11 @@ AnalyzeDNS
 
 Write-Host "[#] Verifying HTTP/HTTPS traffic..." -ForegroundColor Blue
 AnalyzeHTTPAndHTTPS
+
+$quest1 = Read-Host "[?] You want to run a Yara scan, please note that this may take a while.(y/n)(Default n)"
+if ($quest1 -eq "y") {
+    Write-Host "[#] Running Yara scann..." -ForegroundColor Blue
+    runyarascan
+} else {
+    Write-Host "[i] Omited Yara Scann." -ForegroundColor Cyan
+}
